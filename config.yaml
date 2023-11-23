@@ -1,0 +1,21 @@
+opcua:
+  serverURL: "opc.tcp://localhost:4840"
+  securityPolicy: "None"
+  securityMode: "None"
+thread:
+  name: "OpcUaClient-thread"
+  threadPeriod: 50000000
+  fp: 1 
+variables:
+  - name: "variable1"
+    type: "float"
+    namespaceIndex: 1
+    identifier: J0:pos-fb
+  - name: "variable2"
+    type: "float"
+    namespaceIndex: 1
+    identifier: J1:pos-fb
+  - name: "variable3"
+    type: "float"
+    namespaceIndex: 1
+    identifier: J2:pos-fb
