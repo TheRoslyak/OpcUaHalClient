@@ -4,7 +4,7 @@ opcua:
   securityMode: "None"
 thread:
   name: "OpcUaClient-thread"
-  threadPeriod: 50000000
+  threadPeriod: 5000000
   fp: 1 
 variables:
   - name: "variable1"
@@ -15,7 +15,3 @@ variables:
     type: "float"
     namespaceIndex: 1
     identifier: J1:pos-fb
-  - name: "variable3"
-    type: "float"
-    namespaceIndex: 1
-    identifier: J2:pos-fb
