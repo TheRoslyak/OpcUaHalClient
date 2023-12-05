@@ -9,8 +9,11 @@
 #include <open62541/client.h>
 #include <open62541/client_config_default.h>
 #include <open62541/client_highlevel.h>
+#include <open62541/client_highlevel_async.h>
 #include <open62541/client_subscriptions.h>
 #include <open62541/plugin/log_stdout.h>
+#include <open62541/util.h>
+
 
 MODULE_AUTHOR("Robert Dremor");
 MODULE_DESCRIPTION("Motion Controller for DCS");
@@ -22,6 +25,7 @@ RTAPI_MP_STRING(pathYaml, "Path of Yaml File");
 static int comp_id;
 int threadPeriod = 50000000;
 static UA_Client *client = NULL;
+//static UA_Client *client2 = NULL;
 std::string serverURL = "opc.tcp://localhost:4840";
 UA_StatusCode globalConnectStatus;
 UA_ClientConfig *cc;
@@ -53,8 +57,6 @@ onDataChange(UA_Client *client, UA_UInt32 monId, void *monContext,
                          UA_UInt32 subId, void *subContext, UA_DataValue *value) {
     DataSourceContext *context = (DataSourceContext*)subContext;
     
-
-
 switch(context->type) {
     case HAL_FLOAT:
     {
@@ -82,62 +84,66 @@ switch(context->type) {
     }
 }
 }
-#define DISCONNECTED 0
-#define CONNECTING 1
-#define CONNECTED 2
-#define SUBSCRIBING 3
-#define SUBSCRIBED 4
-static long long lastConnectAttempt = 0;
-static long long lastSubscriptionAttempt = 0;
-static int nState = SUBSCRIBED;
+
+
+
 
 static void globalStartFunction(void *arg, long period) {
-    long long now = rtapi_get_clocks(); 
+//UA_Client_connectAsync(client, serverURL.c_str());
+     UA_Client_run_iterate(client, 0); 
+}
 
-    switch (nState) {
-        case DISCONNECTED:
-            if (now - lastConnectAttempt >= 50000000000){
-                rtapi_print_msg(RTAPI_MSG_ERR, "Attempting to reconnect.\n");
-                UA_Client_connectAsync(client, serverURL.c_str());
-                UA_CreateSubscriptionRequest request = UA_CreateSubscriptionRequest_default();
-                UA_Client_Subscriptions_create(client, request, NULL, NULL, NULL);
-                lastConnectAttempt = now;
-                if (globalConnectStatus == UA_STATUSCODE_GOOD) {
-                    nState =  SUBSCRIBING;
-                }
-            }
-            break;
 
-        case SUBSCRIBING:
-            if (now - lastSubscriptionAttempt >= 50000000000) {
-
-                for (auto& subContext : subscriptionContexts) {
-                    DataSourceContext *tempContext = subContext.dataSourceContext;
-                    UA_NodeId nodeId = UA_NODEID_STRING(subContext.namespaceIndex, (char*)subContext.identifier.c_str());
-                    UA_MonitoredItemCreateRequest monRequest = UA_MonitoredItemCreateRequest_default(nodeId);
-                    monRequest.requestedParameters.samplingInterval = static_cast<double>(threadPeriod) / 1000000.0;
-                    UA_MonitoredItemCreateResult monResponse = UA_Client_MonitoredItems_createDataChange(client, subId, UA_TIMESTAMPSTORETURN_BOTH, monRequest, tempContext, onDataChange, NULL);
+static void reconnectCallback(UA_Client *client, void *data) {
+//static void reconnectCallback(){
+    rtapi_print_msg(RTAPI_MSG_ERR, "Attempting to reconnect.\n");
+            UA_Client_connectAsync(client, serverURL.c_str());
+        UA_CreateSubscriptionRequest request = UA_CreateSubscriptionRequest_default();
+        UA_Client_Subscriptions_create(client, request, NULL, NULL, NULL);
+    if (globalConnectStatus != UA_STATUSCODE_GOOD) 
+    rtapi_print_msg(RTAPI_MSG_ERR, "Error connecting to OPC UA server: %s\n", serverURL.c_str());
+    else {rtapi_print_msg(RTAPI_MSG_ERR,"Connect returned with status code %s\n",UA_StatusCode_name(globalConnectStatus));
+        for (auto& subContext : subscriptionContexts) {
+        DataSourceContext *tempContext = subContext.dataSourceContext;
+        UA_NodeId nodeId = UA_NODEID_STRING(subContext.namespaceIndex, (char*)subContext.identifier.c_str());
+        UA_MonitoredItemCreateRequest monRequest = UA_MonitoredItemCreateRequest_default(nodeId);
+        monRequest.requestedParameters.samplingInterval = static_cast<double>(threadPeriod) / 1000000.0;
+        UA_MonitoredItemCreateResult monResponse = UA_Client_MonitoredItems_createDataChange(client, subId, UA_TIMESTAMPSTORETURN_BOTH, monRequest, tempContext, onDataChange, NULL);
                     if(monResponse.statusCode != UA_STATUSCODE_GOOD) {
                         rtapi_print_msg(RTAPI_MSG_ERR, "Failed to recreate MonitoredItem for %s. ns=%d,s=%s\n", subContext.identifier.c_str(), subContext.namespaceIndex, subContext.identifier.c_str());
                     }
-                }
-                lastSubscriptionAttempt = now;
-                nState = SUBSCRIBED;
-            }
-            break;
+    }
+    }
 
-        case SUBSCRIBED:
-            UA_Client_run_iterate(client, 0); // Итерация без задержки
-            break;
+    
+    
+
+
+
+                    
+
+}
+
+UA_DateTime lastActionTime =0;
+static UA_UInt64 reconnectCallbackId = 0;
+static void onConnect(UA_Client *client, UA_SecureChannelState channelState,
+                      UA_SessionState sessionState, UA_StatusCode connectStatus) {
+    globalConnectStatus = connectStatus;
+
+    if (connectStatus == UA_STATUSCODE_GOOD) {
+        if (reconnectCallbackId != 0) {
+            UA_Client_removeCallback(client, reconnectCallbackId);
+            reconnectCallbackId = 0;
+        }
+    } else {
+        if (reconnectCallbackId == 0) {
+            UA_Client_addRepeatedCallback(client, reconnectCallback, NULL, 10000, &reconnectCallbackId);
+           
+        }
     }
 }
-static void
-onConnect(UA_Client *client, UA_SecureChannelState channelState,
-          UA_SessionState sessionState, UA_StatusCode connectStatus) {
-    globalConnectStatus = connectStatus;
-    if (globalConnectStatus != UA_STATUSCODE_GOOD) nState = DISCONNECTED;
 
-}
+
 int rtapi_app_main(void) {
     
     client = UA_Client_new();
@@ -229,6 +235,7 @@ if (config["variables"]) {
         int threadPeriod = threads["threadPeriod"].as<int>();
         int fp = threads["fp"].as<int>();
         hal_create_thread(threadName.c_str(), threadPeriod, fp);
+
       }
 }
 
