@@ -4,8 +4,8 @@ opcua:
   securityMode: "None"
 thread:
   name: "OpcUaClient-thread"
-  threadPeriod: 5000000
-  fp: 1 
+  threadPeriod: 1000000
+  fp: 0
 variables:
   - name: "variable1"
     type: "float"

@@ -20,7 +20,7 @@ static char *pathYaml ;
 RTAPI_MP_STRING(pathYaml, "Path of Yaml File");
 
 static int comp_id;
-int threadPeriod = 50000000;
+int threadPeriod = 6000000;
 static UA_Client *client = NULL;
 std::string serverURL = "opc.tcp://localhost:4840";
 UA_StatusCode globalConnectStatus;
@@ -44,107 +44,76 @@ extern "C" {
     void rtapi_app_exit(void);   
 }
 
-
-
-
-
 static void 
 onDataChange(UA_Client *client, UA_UInt32 monId, void *monContext,
                          UA_UInt32 subId, void *subContext, UA_DataValue *value) {
     DataSourceContext *context = (DataSourceContext*)subContext;
     
-
-
 switch(context->type) {
     case HAL_FLOAT:
     {
-        UA_Float uaValue = *(UA_Float*)value->value.data;
-        *((hal_float_t*)context->valuePtr) = uaValue;   
+        //UA_Float uaValue = *(UA_Float*)value->value.data;
+        *((hal_float_t*)context->valuePtr) = *(UA_Float*)value->value.data;//uaValue;   
         break;
         }
 
     case HAL_BIT:{
-        UA_Boolean uaValue = *(UA_Boolean*)value->value.data;
-        *((hal_bit_t*)context->valuePtr) = uaValue; 
+        //UA_Boolean uaValue = *(UA_Boolean*)value->value.data
+        *((hal_bit_t*)context->valuePtr) = *(UA_Boolean*)value->value.data;//uaValue; 
         break;
         }
 
     case HAL_S32:{
-        UA_Int32 uaValue = *(UA_Int32*)value->value.data;
-        *((hal_s32_t*)context->valuePtr) = uaValue; 
+        //UA_Int32 uaValue = *(UA_Int32*)value->value.data;
+        *((hal_s32_t*)context->valuePtr) = *(UA_Int32*)value->value.data;//uaValue; 
         break;
     }
     case HAL_U32:
 {
-        UA_UInt32 uaValue = *(UA_UInt32*)value->value.data;
-        *((hal_u32_t*)context->valuePtr) = uaValue; 
+        //UA_UInt32 uaValue = *(UA_UInt32*)value->value.data;
+        *((hal_u32_t*)context->valuePtr) = *(UA_UInt32*)value->value.data;//uaValue; 
         break;
     }
 }
 }
-#define DISCONNECTED 0
-#define CONNECTING 1
-#define CONNECTED 2
-#define SUBSCRIBING 3
-#define SUBSCRIBED 4
+
 static long long lastConnectAttempt = 0;
-static long long lastSubscriptionAttempt = 0;
-static int nState = SUBSCRIBED;
 
 static void globalStartFunction(void *arg, long period) {
     long long now = rtapi_get_clocks(); 
-
-    switch (nState) {
-        case DISCONNECTED:
-            if (now - lastConnectAttempt >= 50000000000){
-                rtapi_print_msg(RTAPI_MSG_ERR, "Attempting to reconnect.\n");
-                UA_Client_connectAsync(client, serverURL.c_str());
-                UA_CreateSubscriptionRequest request = UA_CreateSubscriptionRequest_default();
-                UA_Client_Subscriptions_create(client, request, NULL, NULL, NULL);
-                lastConnectAttempt = now;
-                if (globalConnectStatus == UA_STATUSCODE_GOOD) {
-                    nState =  SUBSCRIBING;
-                }
-            }
-            break;
-
-        case SUBSCRIBING:
-            if (now - lastSubscriptionAttempt >= 50000000000) {
-
+        if (now - lastConnectAttempt >= 50000000000 && globalConnectStatus != UA_STATUSCODE_GOOD){
+            rtapi_print_msg(RTAPI_MSG_ERR, "Attempting to reconnect.\n");
+            UA_Client_connectAsync(client, serverURL.c_str());
+            UA_CreateSubscriptionRequest request = UA_CreateSubscriptionRequest_default();
+            UA_Client_Subscriptions_create(client, request, NULL, NULL, NULL);
+            lastConnectAttempt = now;
+            if (globalConnectStatus == UA_STATUSCODE_GOOD) {
                 for (auto& subContext : subscriptionContexts) {
-                    DataSourceContext *tempContext = subContext.dataSourceContext;
-                    UA_NodeId nodeId = UA_NODEID_STRING(subContext.namespaceIndex, (char*)subContext.identifier.c_str());
-                    UA_MonitoredItemCreateRequest monRequest = UA_MonitoredItemCreateRequest_default(nodeId);
-                    monRequest.requestedParameters.samplingInterval = static_cast<double>(threadPeriod) / 1000000.0;
-                    UA_MonitoredItemCreateResult monResponse = UA_Client_MonitoredItems_createDataChange(client, subId, UA_TIMESTAMPSTORETURN_BOTH, monRequest, tempContext, onDataChange, NULL);
-                    if(monResponse.statusCode != UA_STATUSCODE_GOOD) {
-                        rtapi_print_msg(RTAPI_MSG_ERR, "Failed to recreate MonitoredItem for %s. ns=%d,s=%s\n", subContext.identifier.c_str(), subContext.namespaceIndex, subContext.identifier.c_str());
-                    }
+                DataSourceContext *tempContext = subContext.dataSourceContext;
+                UA_NodeId nodeId = UA_NODEID_STRING(subContext.namespaceIndex, (char*)subContext.identifier.c_str());
+                UA_MonitoredItemCreateRequest monRequest = UA_MonitoredItemCreateRequest_default(nodeId);
+                monRequest.requestedParameters.samplingInterval = static_cast<double>(threadPeriod) / 1000000.0;
+                UA_MonitoredItemCreateResult monResponse = UA_Client_MonitoredItems_createDataChange(client, subId, UA_TIMESTAMPSTORETURN_BOTH, monRequest, tempContext, onDataChange, NULL);
+                if(monResponse.statusCode != UA_STATUSCODE_GOOD) {
+                    rtapi_print_msg(RTAPI_MSG_ERR, "Failed to recreate MonitoredItem for %s. ns=%d,s=%s\n", subContext.identifier.c_str(), subContext.namespaceIndex, subContext.identifier.c_str());
                 }
-                lastSubscriptionAttempt = now;
-                nState = SUBSCRIBED;
+                }
+                }
             }
-            break;
-
-        case SUBSCRIBED:
-            UA_Client_run_iterate(client, 0); // Итерация без задержки
-            break;
+            
+UA_Client_run_iterate(client, 0); 
     }
-}
+
 static void
 onConnect(UA_Client *client, UA_SecureChannelState channelState,
           UA_SessionState sessionState, UA_StatusCode connectStatus) {
     globalConnectStatus = connectStatus;
-    if (globalConnectStatus != UA_STATUSCODE_GOOD) nState = DISCONNECTED;
-
 }
 int rtapi_app_main(void) {
     
     client = UA_Client_new();
     
     cc = UA_Client_getConfig(client);
-    
-    
     comp_id = hal_init("opcuaclient");
     if(comp_id < 0) return comp_id;
 
@@ -213,7 +182,7 @@ if (config["variables"]) {
 
         UA_NodeId nodeId = UA_NODEID_STRING(namespaceIndex, (char*)identifier.c_str());
         UA_MonitoredItemCreateRequest monRequest = UA_MonitoredItemCreateRequest_default(nodeId);
-        monRequest.requestedParameters.samplingInterval = static_cast<double>(threadPeriod) / 1000000.0;
+        monRequest.requestedParameters.samplingInterval = 1;//static_cast<double>(threadPeriod) / 1000000.0;
         
         UA_MonitoredItemCreateResult monResponse = UA_Client_MonitoredItems_createDataChange(client, subId, UA_TIMESTAMPSTORETURN_BOTH, monRequest, context, onDataChange, NULL);
         
