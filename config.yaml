@@ -1,17 +1,71 @@
 opcua:
-  serverURL: "opc.tcp://localhost:4840"
+  serverURL: "opc.tcp://192.168.26.134:4840"
   securityPolicy: "None"
   securityMode: "None"
-thread:
-  name: "OpcUaClient-thread"
-  threadPeriod: 1000000
-  fp: 0
 variables:
-  - name: "variable1"
+  - name: "ActualPos"
+    type: "u32"
+    dir: "HAL_IN"
+    namespaceIndex: 0
+    identifier: ActualPos
+
+  - name: "ActualVelocity"
     type: "float"
-    namespaceIndex: 1
-    identifier: J0:pos-fb
-  - name: "variable2"
+    dir: "HAL_IN"
+    namespaceIndex: 0
+    identifier: ActualVelocity
+
+  - name: "EDRK_Local"
     type: "float"
-    namespaceIndex: 1
-    identifier: J1:pos-fb
+    dir: "HAL_IN"
+    namespaceIndex: 0
+    identifier: EDRK_Local
+
+  - name: "EDRK_Off"
+    type: "float"
+    dir: "HAL_IN"
+    namespaceIndex: 0
+    identifier: EDRK_Off
+
+  - name: "EDRK_On"
+    type: "float"
+    dir: "HAL_IN"
+    namespaceIndex: 0
+    identifier: EDRK_On
+
+  - name: "OperationMode"
+    type: "u32"
+    namespaceIndex: 0
+    identifier: OperationMode
+
+  - name: "TargetPos"
+    type: "u32"
+    dir: "HAL_IN"
+    namespaceIndex: 0
+    identifier: TargetPos
+
+  - name: "TargetPosInc"
+    type: "float"
+    dir: "HAL_IN"
+    namespaceIndex: 0
+    identifier: TargetPosInc
+
+  - name: "VFD1_State"
+    type: "u32"
+    dir: "HAL_IN"
+    namespaceIndex: 0
+    identifier: VFD1_State
+
+  - name: "VFD2_State"
+    type: "u32"
+    dir: "HAL_IN"
+    namespaceIndex: 0
+    identifier: VFD2_State
+
+  - name: "VFD3_State"
+    type: "u32"
+    dir: "HAL_IN"
+    namespaceIndex: 0
+    identifier: VFD3_State
+    
+    

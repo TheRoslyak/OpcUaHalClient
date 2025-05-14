@@ -2,7 +2,7 @@
 CC = g++
 
 # Compilation flags
-CFLAGS = -std=c++17 -Wall -fPIC -DRTAPI
+CFLAGS = -std=c++17 -Wall -fPIC -DULAPI
 
 # Paths to search for header files
 INCLUDES = -Iinclude \
@@ -22,7 +22,7 @@ SRCS = main.cpp
 
 
 # Output file
-OUTPUT = /usr/lib/linuxcnc/modules/opcuaclient.so
+OUTPUT = /usr/lib/linuxcnc/modules/opcuaclient
 
 # Rule to compile all source files
 all:
