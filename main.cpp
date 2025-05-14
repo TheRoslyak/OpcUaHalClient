@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <hal.h>
 #include <signal.h>
+#include <rtapi.h>
 #include <rtapi_mutex.h>
 #include <yaml-cpp/yaml.h>
 #include <open62541/client.h>
@@ -22,6 +23,7 @@ static char *pathYaml = NULL;
 //RTAPI_MP_STRING(pathYaml, "Path of Yaml File");
 
 static int comp_id;
+static int rtapi_id;
 static UA_Client *client = NULL;
 std::string serverURL = "opc.tcp://192.168.26.135:4840";
 UA_StatusCode globalConnectStatus;
@@ -49,28 +51,18 @@ static void
 onConnect(UA_Client *client, UA_SecureChannelState channelState,
           UA_SessionState sessionState, UA_StatusCode connectStatus) {
     globalConnectStatus = connectStatus;
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                "Client connection status changed. Channel: %d, Session: %d, Status: %s",
-                channelState, sessionState, UA_StatusCode_name(connectStatus));
+    std::cerr << "Client connection status changed. Channel: " << channelState 
+              << ", Session: " << sessionState << ", Status: " << UA_StatusCode_name(connectStatus) << std::endl;
 }
 
 static void onDataChange(UA_Client *client, UA_UInt32 monId, void *monContext,
                          UA_UInt32 subId, void *subContext, UA_DataValue *value) {
     DataSourceContext *context = (DataSourceContext*)subContext;
     
-    // Test different logging methods
-    printf("DEBUG (printf): Received data change for subscription %u\n", subId);
-    std::cout << "DEBUG (cout): Received data change for subscription " << subId << std::endl;
-    rtapi_print_msg(RTAPI_MSG_ERR, "DEBUG (rtapi): Received data change for subscription %u\n", subId);
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                "DEBUG (UA_LOG): Received data change for subscription %u", subId);
+    std::cerr << "Received data change for subscription " << subId << std::endl;
     
     if (!value || !value->hasValue) {
-        printf("ERROR (printf): Empty value received\n");
-        std::cerr << "ERROR (cerr): Empty value received" << std::endl;
-        rtapi_print_msg(RTAPI_MSG_ERR, "ERROR (rtapi): Empty value received\n");
-        UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                    "ERROR (UA_LOG): Empty value received");
+        std::cerr << "Error: Empty value received" << std::endl;
         return;
     }
 
@@ -79,35 +71,28 @@ static void onDataChange(UA_Client *client, UA_UInt32 monId, void *monContext,
         {
             UA_Float uaValue = *(UA_Float*)value->value.data;
             *((hal_float_t*)context->valuePtr) = uaValue;
-            printf("DEBUG (printf): Updated HAL_FLOAT value: %f\n", uaValue);
-            std::cout << "DEBUG (cout): Updated HAL_FLOAT value: " << uaValue << std::endl;
-            rtapi_print_msg(RTAPI_MSG_ERR, "DEBUG (rtapi): Updated HAL_FLOAT value: %f\n", uaValue);
-            UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                       "DEBUG (UA_LOG): Updated HAL_FLOAT value: %f", uaValue);
+            std::cerr << "Updated HAL_FLOAT value: " << uaValue << std::endl;
             break;
         }
         case HAL_BIT:
         {
             UA_Boolean uaValue = *(UA_Boolean*)value->value.data;
             *((hal_bit_t*)context->valuePtr) = uaValue;
-            UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                       "Updated HAL_BIT value: %d", uaValue);
+            std::cerr << "Updated HAL_BIT value: " << uaValue << std::endl;
             break;
         }
         case HAL_S32:
         {
             UA_Int32 uaValue = *(UA_Int32*)value->value.data;
             *((hal_s32_t*)context->valuePtr) = uaValue;
-            UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                       "Updated HAL_S32 value: %d", uaValue);
+            std::cerr << "Updated HAL_S32 value: " << uaValue << std::endl;
             break;
         }
         case HAL_U32:
         {
             UA_UInt32 uaValue = *(UA_UInt32*)value->value.data;
             *((hal_u32_t*)context->valuePtr) = uaValue;
-            UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                       "Updated HAL_U32 value: %u", uaValue);
+            std::cerr << "Updated HAL_U32 value: " << uaValue << std::endl;
             break;
         }
     }
@@ -121,29 +106,17 @@ void check_connection_status() {
     long long now = rtapi_get_clocks();
 
     if (globalConnectStatus != UA_STATUSCODE_GOOD) {
-        printf("ERROR (printf): Connection status not good: %s\n", UA_StatusCode_name(globalConnectStatus));
-        std::cerr << "ERROR (cerr): Connection status not good: " << UA_StatusCode_name(globalConnectStatus) << std::endl;
-        rtapi_print_msg(RTAPI_MSG_ERR, "ERROR (rtapi): Connection status not good: %s\n", 
-                       UA_StatusCode_name(globalConnectStatus));
-        UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                    "ERROR (UA_LOG): Connection status not good: %s", 
-                    UA_StatusCode_name(globalConnectStatus));
+        std::cerr << "Error: Connection status not good: " << UA_StatusCode_name(globalConnectStatus) << std::endl;
         
         if (now - lastConnectAttempt >= 5000000000) {
             reconnectCount++;
-            printf("INFO (printf): Attempting to reconnect (attempt %d)\n", reconnectCount);
-            std::cout << "INFO (cout): Attempting to reconnect (attempt " << reconnectCount << ")" << std::endl;
-            rtapi_print_msg(RTAPI_MSG_ERR, "INFO (rtapi): Attempting to reconnect (attempt %d)\n", 
-                           reconnectCount);
-            UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                       "INFO (UA_LOG): Attempting to reconnect (attempt %d)", reconnectCount);
+            std::cerr << "Info: Attempting to reconnect (attempt " << reconnectCount << ")" << std::endl;
             
             UA_StatusCode retval = UA_Client_connect(client, serverURL.c_str());
             lastConnectAttempt = now;
             
             if (retval == UA_STATUSCODE_GOOD) {
-                UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                           "Successfully reconnected to server");
+                std::cerr << "Successfully reconnected to server" << std::endl;
                 
                 UA_CreateSubscriptionRequest request = UA_CreateSubscriptionRequest_default();
                 UA_CreateSubscriptionResponse response = 
@@ -151,10 +124,8 @@ void check_connection_status() {
                 
                 if (response.responseHeader.serviceResult == UA_STATUSCODE_GOOD) {
                     subId = response.subscriptionId;
-                    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                               "Recreated subscription with ID %u", subId);
+                    std::cerr << "Recreated subscription with ID " << subId << std::endl;
                     
-                    // Recreate monitoring for all variables
                     for (auto& subContext : subscriptionContexts) {
                         UA_NodeId nodeId = UA_NODEID_STRING(subContext.namespaceIndex, 
                                                           (char*)subContext.identifier.c_str());
@@ -168,28 +139,22 @@ void check_connection_status() {
                                 subContext.dataSourceContext, onDataChange, NULL);
                         
                         if (monResponse.statusCode == UA_STATUSCODE_GOOD) {
-                            UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                                       "Recreated monitoring for %s", 
-                                       subContext.identifier.c_str());
+                            std::cerr << "Recreated monitoring for " << subContext.identifier << std::endl;
                         } else {
-                            UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                                       "Failed to recreate monitoring for %s: %s",
-                                       subContext.identifier.c_str(),
-                                       UA_StatusCode_name(monResponse.statusCode));
+                            std::cerr << "Failed to recreate monitoring for " << subContext.identifier 
+                                    << ": " << UA_StatusCode_name(monResponse.statusCode) << std::endl;
                         }
                     }
                 }
             } else {
-                UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                           "Reconnection failed: %s", UA_StatusCode_name(retval));
+                std::cerr << "Reconnection failed: " << UA_StatusCode_name(retval) << std::endl;
             }
         }
     }
     
     UA_StatusCode retval = UA_Client_run_iterate(client, 100);
     if (retval != UA_STATUSCODE_GOOD) {
-        UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                    "Client iteration failed: %s", UA_StatusCode_name(retval));
+        std::cerr << "Client iteration failed: " << UA_StatusCode_name(retval) << std::endl;
     }
 }
 
@@ -201,49 +166,57 @@ void signal_handler(int signo) {
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "Usage: %s <yaml_config_file>\n", argv[0]);
+        std::cerr << "Usage: " << argv[0] << " <yaml_config_file>" << std::endl;
         return -1;
     }
+
+    rtapi_id = hal_init("OPCUACLIENT");
+    if (rtapi_id < 0) {
+        std::cerr << "Error: RTAPI init failed" << std::endl;
+        return -1;
+    }
+
+    rtapi_set_msg_level(RTAPI_MSG_ALL);
     
-    rtapi_print_msg(RTAPI_MSG_ERR, "Starting OPC UA HAL Client\n");
+    std::cerr << "Starting OPC UA HAL Client" << std::endl;
     
-    // Get absolute path
     char abs_path[PATH_MAX];
     char *res = realpath(argv[1], abs_path);
     if (res == NULL) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "Failed to resolve path: %s\n", argv[1]);
+        std::cerr << "Failed to resolve path: " << argv[1] << std::endl;
+       
         return -1;
     }
     pathYaml = strdup(abs_path);
     
-    rtapi_print_msg(RTAPI_MSG_ERR, "Using YAML config file: %s\n", pathYaml);
+    std::cerr << "Using YAML config file: " << pathYaml << std::endl;
     
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     
-    rtapi_print_msg(RTAPI_MSG_ERR, "Creating OPC UA client\n");
+    std::cerr << "Creating OPC UA client" << std::endl;
     client = UA_Client_new();
     if (!client) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "Failed to create client\n");
+        std::cerr << "Failed to create client" << std::endl;
         return -1;
     }
 
     cc = UA_Client_getConfig(client);
     cc->stateCallback = onConnect;
     
-    rtapi_print_msg(RTAPI_MSG_ERR, "Initializing HAL component\n");
+    std::cerr << "Initializing HAL component" << std::endl;
     comp_id = hal_init("opcuaclient");
     if(comp_id < 0) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "Failed to initialize HAL component\n");
+        std::cerr << "Failed to initialize HAL component" << std::endl;
         return comp_id;
     }
 
     try {
-        rtapi_print_msg(RTAPI_MSG_ERR, "Loading YAML configuration\n");
+        std::cerr << "Loading YAML configuration" << std::endl;
         YAML::Node config = YAML::LoadFile(pathYaml);
         
         if (!config["opcua"]) {
-            rtapi_print_msg(RTAPI_MSG_ERR, "No OPC UA configuration found in YAML\n");
+            std::cerr << "No OPC UA configuration found in YAML" << std::endl;
             UA_Client_delete(client);
             hal_exit(comp_id);
             return -1;
@@ -251,24 +224,23 @@ int main(int argc, char *argv[]) {
 
         YAML::Node opcua = config["opcua"];
         serverURL = opcua["serverURL"].as<std::string>();
-        rtapi_print_msg(RTAPI_MSG_ERR, "Connecting to server: %s\n", serverURL.c_str());
+        std::cerr << "Connecting to server: " << serverURL << std::endl;
         
         UA_StatusCode retval = UA_Client_connect(client, serverURL.c_str());
         if(retval != UA_STATUSCODE_GOOD) {
-            rtapi_print_msg(RTAPI_MSG_ERR, "Failed to connect to server. Status code: %s\n", 
-                          UA_StatusCode_name(retval));
+            std::cerr << "Failed to connect to server. Status code: " << UA_StatusCode_name(retval) << std::endl;
             UA_Client_delete(client);
             hal_exit(comp_id);
             return -1;
         }
         
-        rtapi_print_msg(RTAPI_MSG_ERR, "Successfully connected to server\n");
+        std::cerr << "Successfully connected to server" << std::endl;
         
-        rtapi_print_msg(RTAPI_MSG_ERR, "Creating subscription\n");
+        std::cerr << "Creating subscription" << std::endl;
         UA_CreateSubscriptionRequest request = UA_CreateSubscriptionRequest_default();
         UA_CreateSubscriptionResponse response = UA_Client_Subscriptions_create(client, request, NULL, NULL, NULL);
         if (response.responseHeader.serviceResult != UA_STATUSCODE_GOOD) {
-            rtapi_print_msg(RTAPI_MSG_ERR, "Failed to create subscription\n");
+            std::cerr << "Failed to create subscription" << std::endl;
             UA_Client_disconnect(client);
             UA_Client_delete(client);
             hal_exit(comp_id);
@@ -276,7 +248,7 @@ int main(int argc, char *argv[]) {
         }
         
         subId = response.subscriptionId;
-        rtapi_print_msg(RTAPI_MSG_ERR, "Created subscription with ID %u\n", subId);
+        std::cerr << "Created subscription with ID " << subId << std::endl;
 
         if (config["variables"]) {
             for (const auto& variable : config["variables"]) {
@@ -338,31 +310,31 @@ int main(int argc, char *argv[]) {
                         context, onDataChange, NULL);
                 
                 if(monResponse.statusCode != UA_STATUSCODE_GOOD) {
-                    rtapi_print_msg(RTAPI_MSG_ERR, "Failed to create MonitoredItem for %s. ns=%d,s=%s\n",
-                                  name.c_str(), namespaceIndex, identifier.c_str());
+                    std::cerr << "Failed to create MonitoredItem for " << name << ". ns=" 
+                             << namespaceIndex << ",s=" << identifier << std::endl;
                 } else {
-                    rtapi_print_msg(RTAPI_MSG_ERR, "Successfully created MonitoredItem for %s\n", name.c_str());
+                    std::cerr << "Successfully created MonitoredItem for " << name << std::endl;
                 }
             }
         }
 
-                         UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                         "Not connected. Retrying to connect in 1 second");
-        rtapi_print_msg(RTAPI_MSG_ERR, "HAL component ready, entering main loop\n");
+        std::cerr << "Not connected. Retrying to connect in 1 second" << std::endl;
+        std::cerr << "HAL component ready, entering main loop" << std::endl;
         hal_ready(comp_id);
         while(running) {
-            check_connection_status(); // Increase timeout to 1000ms
-            usleep(10000); // Increase delay to 10ms
+            check_connection_status();
+            usleep(10000);
         }
 
-        rtapi_print_msg(RTAPI_MSG_ERR, "Cleaning up...\n");
+        std::cerr << "Cleaning up..." << std::endl;
         UA_Client_disconnect(client);
         UA_Client_delete(client);
         hal_exit(comp_id);
+        rtapi_exit(rtapi_id);
         return 0;
 
     } catch (const YAML::Exception &e) {
-        rtapi_print_msg(RTAPI_MSG_ERR, "Error parsing YAML: %s\n", e.what());
+        std::cerr << "Error parsing YAML: " << e.what() << std::endl;
         return -1;
     }
 }

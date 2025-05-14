@@ -35,6 +35,7 @@ variables:
 
   - name: "OperationMode"
     type: "u32"
+    dir: "HAL_IN"
     namespaceIndex: 0
     identifier: OperationMode
 

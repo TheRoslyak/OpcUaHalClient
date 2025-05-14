@@ -10,7 +10,7 @@ INCLUDES = -Iinclude \
 
 
 # Link flags
-LDFLAGS = -shared 
+LDFLAGS =  
 
 # Libraries for linking
 LIBS = -lyaml-cpp -llinuxcnchal -lopen62541
@@ -22,7 +22,7 @@ SRCS = main.cpp
 
 
 # Output file
-OUTPUT = /usr/lib/linuxcnc/modules/opcuaclient
+OUTPUT =  /usr/bin/opcuaclient
 
 # Rule to compile all source files
 all:
