@@ -1,4 +1,4 @@
-//#include <iostream>
+#include <iostream>
 //#include "common.h"
 #include <unistd.h>
 #include <hal.h>
@@ -12,6 +12,7 @@
 #include <open62541/plugin/log_stdout.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 //MODULE_AUTHOR("Robert Dremor");
 //MODULE_DESCRIPTION("Motion Controller for DCS");
@@ -22,7 +23,7 @@ static char *pathYaml = NULL;
 
 static int comp_id;
 static UA_Client *client = NULL;
-std::string serverURL = "opc.tcp://192.168.26.134:4840";
+std::string serverURL = "opc.tcp://192.168.26.135:4840";
 UA_StatusCode globalConnectStatus;
 UA_ClientConfig *cc;
 UA_UInt32 subId;
@@ -57,12 +58,19 @@ static void onDataChange(UA_Client *client, UA_UInt32 monId, void *monContext,
                          UA_UInt32 subId, void *subContext, UA_DataValue *value) {
     DataSourceContext *context = (DataSourceContext*)subContext;
     
+    // Test different logging methods
+    printf("DEBUG (printf): Received data change for subscription %u\n", subId);
+    std::cout << "DEBUG (cout): Received data change for subscription " << subId << std::endl;
+    rtapi_print_msg(RTAPI_MSG_ERR, "DEBUG (rtapi): Received data change for subscription %u\n", subId);
     UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                "Received data change notification for subscription %u", subId);
+                "DEBUG (UA_LOG): Received data change for subscription %u", subId);
     
     if (!value || !value->hasValue) {
+        printf("ERROR (printf): Empty value received\n");
+        std::cerr << "ERROR (cerr): Empty value received" << std::endl;
+        rtapi_print_msg(RTAPI_MSG_ERR, "ERROR (rtapi): Empty value received\n");
         UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                    "Received empty value in data change notification");
+                    "ERROR (UA_LOG): Empty value received");
         return;
     }
 
@@ -71,8 +79,11 @@ static void onDataChange(UA_Client *client, UA_UInt32 monId, void *monContext,
         {
             UA_Float uaValue = *(UA_Float*)value->value.data;
             *((hal_float_t*)context->valuePtr) = uaValue;
+            printf("DEBUG (printf): Updated HAL_FLOAT value: %f\n", uaValue);
+            std::cout << "DEBUG (cout): Updated HAL_FLOAT value: " << uaValue << std::endl;
+            rtapi_print_msg(RTAPI_MSG_ERR, "DEBUG (rtapi): Updated HAL_FLOAT value: %f\n", uaValue);
             UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                       "Updated HAL_FLOAT value: %f", uaValue);
+                       "DEBUG (UA_LOG): Updated HAL_FLOAT value: %f", uaValue);
             break;
         }
         case HAL_BIT:
@@ -110,13 +121,22 @@ void check_connection_status() {
     long long now = rtapi_get_clocks();
 
     if (globalConnectStatus != UA_STATUSCODE_GOOD) {
+        printf("ERROR (printf): Connection status not good: %s\n", UA_StatusCode_name(globalConnectStatus));
+        std::cerr << "ERROR (cerr): Connection status not good: " << UA_StatusCode_name(globalConnectStatus) << std::endl;
+        rtapi_print_msg(RTAPI_MSG_ERR, "ERROR (rtapi): Connection status not good: %s\n", 
+                       UA_StatusCode_name(globalConnectStatus));
         UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                    "Connection status not good: %s", UA_StatusCode_name(globalConnectStatus));
+                    "ERROR (UA_LOG): Connection status not good: %s", 
+                    UA_StatusCode_name(globalConnectStatus));
         
-        if (now - lastConnectAttempt >= 5000000000) { // Reduced interval to 5 seconds
+        if (now - lastConnectAttempt >= 5000000000) {
             reconnectCount++;
+            printf("INFO (printf): Attempting to reconnect (attempt %d)\n", reconnectCount);
+            std::cout << "INFO (cout): Attempting to reconnect (attempt " << reconnectCount << ")" << std::endl;
+            rtapi_print_msg(RTAPI_MSG_ERR, "INFO (rtapi): Attempting to reconnect (attempt %d)\n", 
+                           reconnectCount);
             UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                       "Attempting to reconnect (attempt %d)", reconnectCount);
+                       "INFO (UA_LOG): Attempting to reconnect (attempt %d)", reconnectCount);
             
             UA_StatusCode retval = UA_Client_connect(client, serverURL.c_str());
             lastConnectAttempt = now;

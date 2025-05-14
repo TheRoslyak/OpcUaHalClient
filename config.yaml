@@ -1,5 +1,5 @@
 opcua:
-  serverURL: "opc.tcp://192.168.26.134:4840"
+  serverURL: "opc.tcp://192.168.26.135:4840"
   securityPolicy: "None"
   securityMode: "None"
 variables:
